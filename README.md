@@ -17,16 +17,11 @@
 
 三个子 agent 各自拥有**独立的上下文窗口**，按顺序链式调用，不并发。不输入 `/pipeline` 时，这套流程完全不生效，会话照常使用。
 
-```mermaid
-flowchart LR
-    R([需求]) --> P[计划]
-    P --> D[开发阶段 N]
-    D --> T{测试}
-    T -- FAIL --> D
-    T -- PASS --> N{还有阶段?}
-    N -- 有 --> D
-    N -- 没有 --> X([交付])
-```
+<p align="center">
+  <img src="docs/pipeline-diagram.png" alt="/pipeline 架构与流程图：主 agent 调度计划、开发、测试三个子 agent；每个阶段开发后测试，失败则修复复测，全部通过后交付" width="100%">
+</p>
+
+<p align="center"><sub>源文件 <a href="docs/pipeline-diagram.excalidraw">docs/pipeline-diagram.excalidraw</a>，可在 <a href="https://excalidraw.com">excalidraw.com</a> 打开编辑</sub></p>
 
 ## 特性
 
