@@ -35,7 +35,7 @@
 
 ## 特性
 
-- **开关式**：只有你手动输入 `/pipeline` 才会启动，模型不会自行触发。
+- **真正的开关式**：只有你手动输入 `/pipeline` 才会启动。三个角色的定义放在 skill 目录里，没有注册成全局子 agent，所以平时的会话里没有任何 pipeline 角色可被自动调用。
 - **调度者主导**：由主 agent 决定做什么、何时做。子 agent 执行并给建议，调度者可以采纳也可以不采纳，每个决定都记在 `DECISIONS.md`。
 - **职责隔离**：调度者只调度；测试 agent 不能改源码，验收保持独立。
 - **测试省 token（v1.3.0）**：阶段按事先划好的批次统一测试；开发者交付 `acceptance` 脚本，测试者只补缺口；失败后只复测失败项。详见[测试提效](#测试提效)。
@@ -96,15 +96,15 @@ irm https://raw.githubusercontent.com/ELjagi623/claude-pipeline-skill/main/insta
 | 仓库中的文件 | 复制到 |
 |---|---|
 | `skills/pipeline/SKILL.md` | `~/.claude/skills/pipeline/SKILL.md` |
-| `agents/pipeline-planner.md` | `~/.claude/agents/pipeline-planner.md` |
-| `agents/pipeline-developer.md` | `~/.claude/agents/pipeline-developer.md` |
-| `agents/pipeline-tester.md` | `~/.claude/agents/pipeline-tester.md` |
+| `skills/pipeline/roles/planner.md` | `~/.claude/skills/pipeline/roles/planner.md` |
+| `skills/pipeline/roles/developer.md` | `~/.claude/skills/pipeline/roles/developer.md` |
+| `skills/pipeline/roles/tester.md` | `~/.claude/skills/pipeline/roles/tester.md` |
 
 > [!TIP]
-> 只想在某一个项目里用？把上面四个文件复制到**该项目**的 `.claude/skills/pipeline/` 和 `.claude/agents/` 下即可，不影响其他项目。
+> 只想在某一个项目里用？把 `skills/pipeline/` 文件夹（含 `roles/`）复制到**该项目**的 `.claude/skills/` 下即可，不影响其他项目。
 
 > [!IMPORTANT]
-> 安装后需要**新开一个 Claude Code 会话**，新的 skill 和子 agent 才会被识别。
+> 安装后需要**新开一个 Claude Code 会话**，新的 skill 才会被识别。
 
 ## 让 AI agent 帮你安装
 
@@ -125,9 +125,9 @@ https://github.com/ELjagi623/claude-pipeline-skill 帮我安装这个
      `irm https://raw.githubusercontent.com/ELjagi623/claude-pipeline-skill/main/install.ps1 | iex`
 2. **校验**下面 4 个文件都已存在（`~` 为用户主目录；若设置了环境变量 `CLAUDE_CONFIG_DIR`，则以它代替 `~/.claude`）：
    - `~/.claude/skills/pipeline/SKILL.md`
-   - `~/.claude/agents/pipeline-planner.md`
-   - `~/.claude/agents/pipeline-developer.md`
-   - `~/.claude/agents/pipeline-tester.md`
+   - `~/.claude/skills/pipeline/roles/planner.md`
+   - `~/.claude/skills/pipeline/roles/developer.md`
+   - `~/.claude/skills/pipeline/roles/tester.md`
 3. 如果无法联网下载，改用[方式三](#方式三手动复制)：从本仓库读取这 4 个文件，按表格原样写入目标路径。写入前若目标文件已存在，先备份。
 4. **告诉用户**：安装完成，需要新开一个 Claude Code 会话，然后输入 `/pipeline <完整需求>` 启动。
 5. 不要修改这 4 个文件的内容，也不要运行 `/pipeline`，除非用户要求。
@@ -186,9 +186,9 @@ https://github.com/ELjagi623/claude-pipeline-skill 帮我安装这个
 | 角色 | 文件 | 职责 |
 |---|---|---|
 | 调度者 | `skills/pipeline/SKILL.md` | 主导整个项目：划分测试批次、决定下一步做什么和何时测试、判定结果、记录进度、向你汇报。不写代码。 |
-| 计划 | `agents/pipeline-planner.md` | 全程待命：开头新建计划或导入你的计划；开发卡住时调整计划（换方案 / 调顺序 / 拆分 / 降级）。 |
-| 开发 | `agents/pipeline-developer.md` | 每次只实现一个阶段，交付 `acceptance` 脚本；按测试报告找根因修复。 |
-| 测试 | `agents/pipeline-tester.md` | 先跑 `acceptance`，在固定清单和时间预算内补缺口，给出 PASS / FAIL。不改源码。 |
+| 计划 | `skills/pipeline/roles/planner.md` | 全程待命：开头新建计划或导入你的计划；开发卡住时调整计划（换方案 / 调顺序 / 拆分 / 降级）。 |
+| 开发 | `skills/pipeline/roles/developer.md` | 每次只实现一个阶段，交付 `acceptance` 脚本；按测试报告找根因修复。 |
+| 测试 | `skills/pipeline/roles/tester.md` | 先跑 `acceptance`，在固定清单和时间预算内补缺口，给出 PASS / FAIL。不改源码。 |
 
 agent 之间**传路径，不传全文**：消息里只有指令和文件路径，计划、报告等长内容都写在项目的 `.pipeline/` 文件夹中；子 agent 完成后只返回一张四行的交接单（状态、报告路径、关键文件、需要注意）。
 
@@ -225,7 +225,7 @@ agent 之间**传路径，不传全文**：消息里只有指令和文件路径�
 **卸载**：删除以下文件和文件夹。
 
 ```bash
-rm -rf ~/.claude/skills/pipeline ~/.claude/agents/pipeline-planner.md ~/.claude/agents/pipeline-developer.md ~/.claude/agents/pipeline-tester.md
+rm -rf ~/.claude/skills/pipeline
 ```
 
 > [!NOTE]

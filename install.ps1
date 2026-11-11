@@ -1,4 +1,6 @@
-# Installs the /pipeline skill and its three sub-agents into ~/.claude (user level).
+# Installs the /pipeline skill (with its three role definitions) into ~/.claude (user level).
+# The roles live inside the skill folder, so nothing is registered as a global sub-agent:
+# without typing /pipeline, no pipeline agent can be picked automatically.
 #
 # From a local checkout or unzipped release:
 #   powershell -ExecutionPolicy Bypass -File .\install.ps1
@@ -18,6 +20,12 @@
     $ClaudeDir = if ($env:CLAUDE_CONFIG_DIR) { $env:CLAUDE_CONFIG_DIR } else { Join-Path $HOME '.claude' }
     $Files = @(
         'skills/pipeline/SKILL.md',
+        'skills/pipeline/roles/planner.md',
+        'skills/pipeline/roles/developer.md',
+        'skills/pipeline/roles/tester.md'
+    )
+    # Registered as global sub-agents by versions before 1.3.1; moved aside so they cannot be auto-selected.
+    $Legacy = @(
         'agents/pipeline-planner.md',
         'agents/pipeline-developer.md',
         'agents/pipeline-tester.md'
@@ -53,6 +61,13 @@
             }
             Copy-Item (Join-Path $Src $f) $to -Force
             Write-Host "Installed $to"
+        }
+        foreach ($f in $Legacy) {
+            $old = Join-Path $ClaudeDir $f
+            if (Test-Path $old) {
+                Move-Item $old "$old.bak.$stamp" -Force
+                Write-Host "Moved legacy global agent aside: $old -> $old.bak.$stamp"
+            }
         }
         Write-Host ''
         Write-Host 'Done. Open a NEW Claude Code session, then type: /pipeline <your full requirements>'

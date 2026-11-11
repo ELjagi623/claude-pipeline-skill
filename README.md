@@ -35,7 +35,7 @@ Each sub-agent has its own **independent context window**. Without `/pipeline`, 
 
 ## Features
 
-- **Opt-in**: runs only when you type `/pipeline`; the model never triggers it on its own.
+- **Opt-in, truly**: runs only when you type `/pipeline`. The three roles live inside the skill folder and are not registered as global sub-agents, so a normal session has no pipeline agent to delegate to.
 - **Orchestrator-led**: the main agent decides what happens and when. Sub-agents execute and advise; the orchestrator can adopt or reject their advice, and every call is logged in `DECISIONS.md`.
 - **Role isolation**: the orchestrator only dispatches; the tester cannot modify source code, so validation stays independent.
 - **Cheap, batched testing (v1.3.0)**: stages are grouped into test batches planned up front. Developers ship an `acceptance` script, testers only fill the gaps it leaves, and failures are retested selectively. See [Token-efficient testing](#token-efficient-testing).
@@ -96,15 +96,15 @@ irm https://raw.githubusercontent.com/ELjagi623/claude-pipeline-skill/main/insta
 | File in this repo | Copy to |
 |---|---|
 | `skills/pipeline/SKILL.md` | `~/.claude/skills/pipeline/SKILL.md` |
-| `agents/pipeline-planner.md` | `~/.claude/agents/pipeline-planner.md` |
-| `agents/pipeline-developer.md` | `~/.claude/agents/pipeline-developer.md` |
-| `agents/pipeline-tester.md` | `~/.claude/agents/pipeline-tester.md` |
+| `skills/pipeline/roles/planner.md` | `~/.claude/skills/pipeline/roles/planner.md` |
+| `skills/pipeline/roles/developer.md` | `~/.claude/skills/pipeline/roles/developer.md` |
+| `skills/pipeline/roles/tester.md` | `~/.claude/skills/pipeline/roles/tester.md` |
 
 > [!TIP]
-> To use it in a single project only, copy the four files into that project's `.claude/skills/pipeline/` and `.claude/agents/` instead.
+> To use it in a single project only, copy the `skills/pipeline/` folder (including `roles/`) into that project's `.claude/skills/` instead.
 
 > [!IMPORTANT]
-> Start a **new Claude Code session** after installing so the skill and sub-agents are picked up.
+> Start a **new Claude Code session** after installing so the skill is picked up.
 
 ## Install with an AI agent
 
@@ -125,9 +125,9 @@ Install this for me: https://github.com/ELjagi623/claude-pipeline-skill
      `irm https://raw.githubusercontent.com/ELjagi623/claude-pipeline-skill/main/install.ps1 | iex`
 2. **Verify** these 4 files exist (`~` is the home directory; if `CLAUDE_CONFIG_DIR` is set, use it instead of `~/.claude`):
    - `~/.claude/skills/pipeline/SKILL.md`
-   - `~/.claude/agents/pipeline-planner.md`
-   - `~/.claude/agents/pipeline-developer.md`
-   - `~/.claude/agents/pipeline-tester.md`
+   - `~/.claude/skills/pipeline/roles/planner.md`
+   - `~/.claude/skills/pipeline/roles/developer.md`
+   - `~/.claude/skills/pipeline/roles/tester.md`
 3. If downloading is not possible, use [Option 3](#option-3-copy-manually): read the 4 files from this repository and write them to the paths in the table, backing up any existing file first.
 4. **Tell the user** the install is done, that they must start a new Claude Code session, and then run `/pipeline <full requirements>`.
 5. Do not edit these 4 files and do not run `/pipeline` unless the user asks.
@@ -187,9 +187,9 @@ If the plan has questions that would **materially change the product**, they are
 | Role | File | Responsibility |
 |---|---|---|
 | Orchestrator | `skills/pipeline/SKILL.md` | Leads the project: plans the test batches, decides what runs next and when to test, judges results, records progress, reports to you. Writes no code. |
-| Planner | `agents/pipeline-planner.md` | On standby throughout: creates or imports the plan, and adjusts it (change approach / reorder / split / descope) when development gets stuck. |
-| Developer | `agents/pipeline-developer.md` | Implements one stage at a time, ships the `acceptance` script, fixes failures at the root cause. |
-| Tester | `agents/pipeline-tester.md` | Runs `acceptance`, fills the gaps within a fixed checklist and time budget, reports PASS / FAIL. Never edits source. |
+| Planner | `skills/pipeline/roles/planner.md` | On standby throughout: creates or imports the plan, and adjusts it (change approach / reorder / split / descope) when development gets stuck. |
+| Developer | `skills/pipeline/roles/developer.md` | Implements one stage at a time, ships the `acceptance` script, fixes failures at the root cause. |
+| Tester | `skills/pipeline/roles/tester.md` | Runs `acceptance`, fills the gaps within a fixed checklist and time budget, reports PASS / FAIL. Never edits source (enforced by its prompt). |
 
 Agents **pass paths, not content**: messages carry instructions and file paths, while plans and reports live in the project's `.pipeline/` folder. A finished sub-agent returns only a four-line handoff (status, report path, key files, notes).
 
@@ -226,7 +226,7 @@ The install scripts also honor two environment variables: `PIPELINE_REF` (branch
 **Uninstall**: remove these files and folders.
 
 ```bash
-rm -rf ~/.claude/skills/pipeline ~/.claude/agents/pipeline-planner.md ~/.claude/agents/pipeline-developer.md ~/.claude/agents/pipeline-tester.md
+rm -rf ~/.claude/skills/pipeline
 ```
 
 > [!NOTE]
