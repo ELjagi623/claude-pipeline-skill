@@ -2,50 +2,75 @@
 
 # Claude Pipeline Skill
 
-**一行命令，把 Claude Code 会话变成一个「计划 → 开发 → 测试」的自动开发小队。**
+**One command turns a Claude Code session into an automated Plan → Develop → Test team.**
 
 [![Release](https://img.shields.io/github/v/release/ELjagi623/claude-pipeline-skill?label=release)](https://github.com/ELjagi623/claude-pipeline-skill/releases/latest)
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-skill%20%2B%20subagents-d97757)](https://docs.claude.com/en/docs/claude-code)
 
-[安装](#安装) · [让 AI agent 帮你装](#让-ai-agent-帮你安装) · [使用](#使用) · [工作原理](#工作原理) · [设计文档](docs/设计说明.md)
+**English** | [简体中文](README.zh-CN.md)
+
+[Install](#install) · [Install with an AI agent](#install-with-an-ai-agent) · [Usage](#usage) · [How it works](#how-it-works) · [Configuration](#configuration)
 
 </div>
 
 ---
 
-输入 `/pipeline`，当前会话就切换成**调度者**。如果你已经写好了 PRD 和开发计划，它直接按计划开发；如果只有需求，就先让计划 agent 拆成若干阶段。主 agent 先把阶段划分成若干「测试批次」（默认每 3 个阶段一批），之后逐个阶段交给开发 agent 实现，一批开发完再统一交给测试 agent 验收；测试不通过就集中打回修复，只复测失败项。整个流程由主 agent 主导，三个子 agent 只执行并可以给建议。一直过不去时，计划 agent 会调整方案或顺序，直到全部阶段处理完后交付。
+Type `/pipeline` and your current session becomes the **orchestrator**. Give it a PRD and a development plan and it builds straight from the plan; give it only requirements and a planner agent breaks them into stages first. The orchestrator then runs the whole show:
 
-三个子 agent 各自拥有**独立的上下文窗口**，按顺序链式调用，不并发。不输入 `/pipeline` 时，这套流程完全不生效，会话照常使用。
+1. It splits the stages into **test batches** (3 stages per batch by default) right after the plan is final.
+2. A developer agent implements the stages one by one.
+3. Once a batch is fully developed, tester agents validate it in one pass.
+4. Failures are fixed in a single round and only the failed items are retested.
+5. If a stage stays stuck, the planner changes the approach or the order and the run continues until every stage is handled.
+
+The orchestrator **leads the project**: when to develop, when to test, which scope, how many testers, and whether to accept a sub-agent's suggestion are all its calls. The three sub-agents only execute their own role and may offer suggestions. The orchestrator itself never writes business code, tests, or plans, and only maintains the progress records.
+
+Each sub-agent has its own **independent context window**. Without `/pipeline`, none of this is active and your session behaves as usual.
 
 <p align="center">
-  <img src="docs/pipeline-diagram.png" alt="/pipeline 架构与流程图：主 agent 调度计划、开发、测试三个子 agent；逐阶段开发、按批次统一测试，失败则修复复测，全部通过后交付" width="100%">
+  <img src="docs/en.png" alt="/pipeline architecture and flow: the orchestrator directs planner, developer and tester sub-agents; stages are developed one by one, tested per batch, failures are fixed together and only failed items are retested" width="100%">
 </p>
 
-<p align="center"><sub>源文件 <a href="docs/pipeline-diagram.excalidraw">docs/pipeline-diagram.excalidraw</a>，可在 <a href="https://excalidraw.com">excalidraw.com</a> 打开编辑</sub></p>
+<p align="center"><sub>Editable source: <a href="docs/pipeline-diagram-en.excalidraw">docs/pipeline-diagram-en.excalidraw</a> (open it at <a href="https://excalidraw.com">excalidraw.com</a>)</sub></p>
 
-## 特性
+## Features
 
-- **开关式**：只有你手动输入 `/pipeline` 才会启动，模型不会自行触发。
-- **职责隔离**：调度者只调度、不改业务文件，什么时候测、测什么范围都由它决定；测试 agent 不能改源码，只按范围执行验收。
-- **独立上下文**：每个子 agent 自己的对话互不干扰，主 agent 只收到几行交接单。
-- **跨阶段复用 + 自动轮换**：开发和测试 agent 默认沿用以保留上下文；子 agent 发现自己被自动压缩过会主动报告，主 agent 随即换新。测试 agent 同一批次内续用、换批次才换新；开发 agent 连续服务 3 个阶段或状态异常时也会换新，避免压缩后质量下降。
-- **可中断、可恢复**：所有进度写在项目的 `.pipeline/` 文件夹里，换会话也能用 `/pipeline 继续` 接着跑。
-- **自带计划直接开发**：已有 PRD 和开发计划就直接用，计划 agent 只补缺的验收标准，不改你的方案。
-- **规划可问，执行不问**：规划时有需要你拍板的问题，会一次性问完；计划定稿后自动开始无人值守执行，醒来看 `.pipeline/SUMMARY.md` 就行。
-- **卡住自动重新规划**：同一个问题修不好时及时叫停，交给计划 agent 换方案、调整顺序先做别的、拆分或降级，然后继续推进。
-- **防死循环**：每个测试批次最多修 3 轮、每个阶段最多重新规划 2 次；到上限就记为遗留问题，继续其他阶段。
-- **测试省 token（v1.3.0）**：测试后置、按批次统一测；开发者交付 `acceptance` 脚本，测试者只补缺口；固定清单（约 25 项）+ 30–40 分钟预算；有界面的项目并行两个测试 agent；失败后只复测失败项。
+- **Opt-in**: runs only when you type `/pipeline`; the model never triggers it on its own.
+- **Orchestrator-led**: the main agent decides what happens and when. Sub-agents execute and advise; the orchestrator can adopt or reject their advice, and every call is logged in `DECISIONS.md`.
+- **Role isolation**: the orchestrator only dispatches; the tester cannot modify source code, so validation stays independent.
+- **Cheap, batched testing (v1.3.0)**: stages are grouped into test batches planned up front. Developers ship an `acceptance` script, testers only fill the gaps it leaves, and failures are retested selectively. See [Token-efficient testing](#token-efficient-testing).
+- **Independent contexts**: each sub-agent works in its own conversation; the orchestrator only receives a four-line handoff.
+- **Reuse with automatic rotation**: agents are reused to keep context. A sub-agent that detects its context was auto-compacted reports it, and the orchestrator swaps in a fresh one. Testers are reused within a batch and replaced between batches.
+- **Resumable**: all state lives in `.pipeline/`, so `/pipeline continue` picks up where you left off, even in a new session.
+- **Bring your own plan**: an existing PRD and plan are used as-is; the planner only fills in missing acceptance criteria and dependencies.
+- **Ask during planning, never during execution**: clarifying questions come all at once, with recommended answers. After the plan is final the run is unattended; read `.pipeline/SUMMARY.md` when you are back.
+- **Replans when stuck**: repeated failures trigger the planner to switch approach, reorder, split, or descope.
+- **Bounded loops**: at most 3 fix rounds per test batch and 2 replans per stage; leftovers are recorded and the run moves on.
 
-## 前置条件
+## Token-efficient testing
 
-- 已安装 [Claude Code](https://docs.claude.com/en/docs/claude-code)（命令行、桌面版或 IDE 插件均可）。
-- 一键安装需要 `curl`（macOS / Linux）或 PowerShell（Windows，系统自带）。
+In real runs, testing agents consumed about 40% of all tokens, with single rounds taking 30–40 minutes. Developers had already written plenty of tests, yet testers rewrote an independent copy; testing went too deep (mutation checks, multi-timezone sweeps, running the whole suite many times); and every tester re-read the plan, old reports, and designs. v1.3.0 addresses this:
 
-## 安装
+| Rule | What happens |
+|---|---|
+| Batches planned up front | After planning, the orchestrator groups stages into test batches (`TEST_BATCH = 3`) and records them in `PROGRESS.md`. A batch is tested only when all its stages are developed. A stage marked "test immediately" (high-risk foundations) closes its batch early. |
+| `acceptance` script | Every developer ships a one-command script (for example `npm run acceptance`) that checks the acceptance criteria and prints a PASS/FAIL table. Gaps are listed as "not covered by acceptance". |
+| Fill the gaps only | Testers run `acceptance` first, trust existing automated tests, and verify only what it does not cover. No mutation checks, no multi-timezone sweeps, no repeated full-suite runs. A suspected flaky case is re-run 3 times, alone. |
+| Fixed checklist and budget | About 25 items per tester, each with "how to verify / pass criteria", within 30–40 minutes. On timeout the tester writes the report with unverified items marked. Reports contain only the PASS/FAIL table, failure details, and screenshot paths. |
+| Parallel testers | For projects with a UI, a data/API tester and a UI/visual tester run at the same time. This is the one exception to "one sub-agent at a time". |
+| Fix once, retest failures | Failures from the whole batch go to the developer in one round. Retests cover only the failed items, and only the scope that failed. |
+| Batch-scoped reuse | Testers are reused across retests within a batch and replaced for the next batch. |
 
-安装位置是用户级配置目录 `~/.claude/`，装一次所有项目都能用。已存在的同名文件会先自动备份为 `*.bak.<时间戳>`。
+## Prerequisites
 
-### 方式一：一行命令（推荐）
+- [Claude Code](https://docs.claude.com/en/docs/claude-code) (CLI, desktop app, or IDE extension).
+- `curl` (macOS / Linux) or PowerShell (Windows, built in) for the one-line install.
+
+## Install
+
+Files go to your user-level config directory `~/.claude/`, so one install works for every project. Existing files with the same names are backed up as `*.bak.<timestamp>` first.
+
+### Option 1: one-line install (recommended)
 
 **macOS / Linux**
 
@@ -53,22 +78,22 @@
 curl -fsSL https://raw.githubusercontent.com/ELjagi623/claude-pipeline-skill/main/install.sh | bash
 ```
 
-**Windows（PowerShell）**
+**Windows (PowerShell)**
 
 ```powershell
 irm https://raw.githubusercontent.com/ELjagi623/claude-pipeline-skill/main/install.ps1 | iex
 ```
 
-### 方式二：下载 Release
+### Option 2: download a release
 
-1. 下载 [claude-pipeline-skill.zip](https://github.com/ELjagi623/claude-pipeline-skill/releases/latest/download/claude-pipeline-skill.zip) 并解压。
-2. 在解压出来的文件夹里运行：
-   - macOS / Linux：`bash install.sh`
-   - Windows：`powershell -ExecutionPolicy Bypass -File .\install.ps1`
+1. Download [claude-pipeline-skill.zip](https://github.com/ELjagi623/claude-pipeline-skill/releases/latest/download/claude-pipeline-skill.zip) and unzip it.
+2. Run inside the extracted folder:
+   - macOS / Linux: `bash install.sh`
+   - Windows: `powershell -ExecutionPolicy Bypass -File .\install.ps1`
 
-### 方式三：手动复制
+### Option 3: copy manually
 
-| 仓库中的文件 | 复制到 |
+| File in this repo | Copy to |
 |---|---|
 | `skills/pipeline/SKILL.md` | `~/.claude/skills/pipeline/SKILL.md` |
 | `agents/pipeline-planner.md` | `~/.claude/agents/pipeline-planner.md` |
@@ -76,132 +101,133 @@ irm https://raw.githubusercontent.com/ELjagi623/claude-pipeline-skill/main/insta
 | `agents/pipeline-tester.md` | `~/.claude/agents/pipeline-tester.md` |
 
 > [!TIP]
-> 只想在某一个项目里用？把上面四个文件复制到**该项目**的 `.claude/skills/pipeline/` 和 `.claude/agents/` 下即可，不影响其他项目。
+> To use it in a single project only, copy the four files into that project's `.claude/skills/pipeline/` and `.claude/agents/` instead.
 
 > [!IMPORTANT]
-> 安装后需要**新开一个 Claude Code 会话**，新的 skill 和子 agent 才会被识别。
+> Start a **new Claude Code session** after installing so the skill and sub-agents are picked up.
 
-## 让 AI agent 帮你安装
+## Install with an AI agent
 
-把这个仓库地址发给你的 Claude Code（或其他能执行命令的 AI agent），说一句「帮我安装这个」即可：
+Send this repository URL to Claude Code (or any agent that can run commands) and ask it to install it:
 
 ```text
-https://github.com/ELjagi623/claude-pipeline-skill 帮我安装这个
+Install this for me: https://github.com/ELjagi623/claude-pipeline-skill
 ```
 
-### 给 AI agent 的安装说明
+### Instructions for AI agents
 
-> 如果你是正在阅读本文件的 AI agent，用户希望你安装这个 skill，请按以下步骤执行：
+> If you are an AI agent reading this file because the user asked you to install this skill, follow these steps:
 
-1. **判断系统**，运行对应的一条命令（会把 4 个文件下载并安装到用户的 Claude Code 配置目录）：
-   - macOS / Linux / Windows 上的 Git Bash：
+1. **Detect the OS** and run the matching one-liner (it downloads and installs 4 files into the user's Claude Code config directory):
+   - macOS / Linux / Git Bash on Windows:
      `curl -fsSL https://raw.githubusercontent.com/ELjagi623/claude-pipeline-skill/main/install.sh | bash`
-   - Windows PowerShell：
+   - Windows PowerShell:
      `irm https://raw.githubusercontent.com/ELjagi623/claude-pipeline-skill/main/install.ps1 | iex`
-2. **校验**下面 4 个文件都已存在（`~` 为用户主目录；若设置了环境变量 `CLAUDE_CONFIG_DIR`，则以它代替 `~/.claude`）：
+2. **Verify** these 4 files exist (`~` is the home directory; if `CLAUDE_CONFIG_DIR` is set, use it instead of `~/.claude`):
    - `~/.claude/skills/pipeline/SKILL.md`
    - `~/.claude/agents/pipeline-planner.md`
    - `~/.claude/agents/pipeline-developer.md`
    - `~/.claude/agents/pipeline-tester.md`
-3. 如果无法联网下载，改用[方式三](#方式三手动复制)：从本仓库读取这 4 个文件，按表格原样写入目标路径。写入前若目标文件已存在，先备份。
-4. **告诉用户**：安装完成，需要新开一个 Claude Code 会话，然后输入 `/pipeline <完整需求>` 启动。
-5. 不要修改这 4 个文件的内容，也不要运行 `/pipeline`，除非用户要求。
+3. If downloading is not possible, use [Option 3](#option-3-copy-manually): read the 4 files from this repository and write them to the paths in the table, backing up any existing file first.
+4. **Tell the user** the install is done, that they must start a new Claude Code session, and then run `/pipeline <full requirements>`.
+5. Do not edit these 4 files and do not run `/pipeline` unless the user asks.
 
-## 使用
+## Usage
 
-在项目文件夹里新开会话，然后：
+Open a new session in your project folder, then:
 
-| 命令 | 作用 |
+| Command | Effect |
 |---|---|
-| `/pipeline` | 自动在项目里找 PRD 和开发计划，开启流水线 |
-| `/pipeline <文件路径…>` | 指定 PRD / 计划文件，例如 `/pipeline docs/PRD.md docs/开发计划.md` |
-| `/pipeline <完整需求>` | 没有文件时，直接用文字描述需求 |
-| `/pipeline 状态` | 查看进度（不派任何 agent） |
-| `/pipeline 停止` | 暂停 |
-| `/pipeline 继续` | 从中断处恢复，换了会话也行 |
+| `/pipeline` | Finds the PRD and development plan in the project and starts the pipeline |
+| `/pipeline <file paths…>` | Uses the given PRD / plan files, e.g. `/pipeline docs/PRD.md docs/plan.md` |
+| `/pipeline <requirements>` | No files? Describe the requirements in plain text |
+| `/pipeline status` | Shows progress (no agent is dispatched) |
+| `/pipeline stop` | Pauses the run |
+| `/pipeline continue` | Resumes from where it stopped, even in a new session |
 
-### 两种启动方式
+> [!NOTE]
+> The skill's argument keywords are the Chinese words `状态` (status), `停止` (stop), and `继续` (continue). Type those for the keyword commands; the skill's prompts are written in Chinese.
 
-**方式 A：先写好 PRD 和开发计划（推荐）**
+### Two ways to start
 
-先在另一个对话里把需求讨论清楚，写出 PRD 和开发计划，存进项目文件夹（比如 `docs/`），然后输入：
+**A. Write the PRD and plan first (recommended).** Discuss the requirements in a separate chat, save a PRD and a development plan in the project (for example under `docs/`), then run:
 
 ```text
 /pipeline
 ```
 
-它会自动找到这两个文件（找到多个候选时会问你用哪个）。计划里每个阶段已经有可验证的验收标准时，直接开始开发；缺的话，计划 agent 只补验收标准和阶段依赖，不改你的阶段划分和方案。
+It finds both files (and asks which one to use if there are several candidates). If every stage in your plan already has verifiable acceptance criteria, it starts building right away; otherwise the planner only adds acceptance criteria and dependencies, without changing your stages or decisions.
 
-**方式 B：只给需求**
+**B. Requirements only.**
 
 ```text
-/pipeline 做一个记账网页：可以添加收入和支出、按月统计、数据保存在浏览器本地，用原生 HTML/CSS/JS，不要后端。
+/pipeline Build an expense tracker web page: add income and expenses, monthly summaries, data stored in the browser, plain HTML/CSS/JS, no backend.
 ```
 
-计划 agent 从零制定计划。需求写得越具体（功能、技术栈偏好、如何验收），计划越准确。
+The planner drafts the plan from scratch. The more specific the requirements (features, stack preferences, how to verify), the better the plan.
 
-### 规划阶段：可能会问你几个问题
+### Planning phase: a few questions at most
 
-制定或导入计划时，如果有**会实质影响产品**的问题需要你拍板，它会一次性问完，每个问题都附上推荐答案。你可以逐个回答，也可以直接回复"按推荐来"。回答完，计划定稿，**自动开始执行**，不用再说"开始"。
+If the plan has questions that would **materially change the product**, they are asked all at once with a recommended answer each. Answer one by one, or reply "go with the recommendations". Once answered, the plan is finalized and execution starts automatically.
 
-### 执行阶段：不再问你任何问题，可以放心去睡觉
+### Execution phase: no questions, safe to walk away
 
-- **需要做选择时**，按「功能最完整 > 缺陷最少 > 可靠可测试 > 易于调整」的顺序自己挑，每个决策和理由都记在 `.pipeline/DECISIONS.md`。
-- **某个阶段卡住时**（开发说做不了、修了 3 轮还不过、或连续两轮出现相同的失败），它会及时叫停修复，交给计划 agent 调整：换技术方案、把这个阶段推迟先做别的、拆分，或者缩小范围。每个阶段最多调整 2 次，还不行就记进待办，继续其他阶段。
-- **红线**：需要你的账号、密钥、付费服务，或者 git push、部署、删除项目外文件这类操作，它不会替你做。它会用模拟数据或占位配置先把能做的做完，然后把这些事列给你。
-- **全部结束后**，打开 `.pipeline/SUMMARY.md`：里面有怎么运行、各阶段结果、计划调整记录、待你处理的事项和它替你做的关键决策。
+- **Decisions** follow the order "most complete > fewest defects > reliable and testable > easy to change later". Every decision and its reason is logged in `.pipeline/DECISIONS.md`.
+- **Stuck stages** (the developer cannot proceed, 3 fix rounds still fail, or the same failure appears two rounds in a row) are stopped early and handed to the planner: change approach, postpone, split, or descope. Each stage is replanned at most twice.
+- **Red lines**: anything that needs your accounts, keys, paid services, `git push`, deployment, or deleting files outside the project is never done for you. It builds what it can with mock data and placeholder config and lists the rest for you.
+- **When it finishes**, open `.pipeline/SUMMARY.md` for how to run the result, per-stage outcomes, plan adjustments, items for you, and the key decisions made on your behalf.
 
 > [!IMPORTANT]
-> 过夜运行前请确认两件事，否则流程会卡住或中断：
-> 1. Claude Code 的权限模式是 **auto**，否则遇到需要审批的操作会停下来等你点。
-> 2. 电脑不会自动睡眠。在 Claude 桌面版里可以打开「保持唤醒」，也可以在系统电源设置里关掉睡眠。
+> Before running overnight, make sure that:
+> 1. Claude Code's permission mode is **auto**; otherwise it pauses for approvals.
+> 2. Your computer will not go to sleep (use "keep awake" in the Claude desktop app, or disable sleep in system power settings).
 
-## 工作原理
+## How it works
 
-| 角色 | 文件 | 职责 |
+| Role | File | Responsibility |
 |---|---|---|
-| 调度者 | `skills/pipeline/SKILL.md` | 派活、判定结果、记录进度、向你汇报。不写代码。 |
-| 计划 | `agents/pipeline-planner.md` | 全程待命：开头新建计划或导入你的计划；开发卡住时调整计划（换方案 / 调顺序 / 拆分 / 降级）。 |
-| 开发 | `agents/pipeline-developer.md` | 每次只实现一个阶段；按测试报告找根因修复。 |
-| 测试 | `agents/pipeline-tester.md` | 逐条验收 + 回归测试，给出 PASS / FAIL。不改源码。 |
+| Orchestrator | `skills/pipeline/SKILL.md` | Leads the project: plans the test batches, decides what runs next and when to test, judges results, records progress, reports to you. Writes no code. |
+| Planner | `agents/pipeline-planner.md` | On standby throughout: creates or imports the plan, and adjusts it (change approach / reorder / split / descope) when development gets stuck. |
+| Developer | `agents/pipeline-developer.md` | Implements one stage at a time, ships the `acceptance` script, fixes failures at the root cause. |
+| Tester | `agents/pipeline-tester.md` | Runs `acceptance`, fills the gaps within a fixed checklist and time budget, reports PASS / FAIL. Never edits source. |
 
-agent 之间**传路径，不传全文**：消息里只有指令和文件路径，计划、报告等长内容都写在项目的 `.pipeline/` 文件夹中；子 agent 完成后只返回一张四行的交接单（状态、报告路径、关键文件、需要注意）。
+Agents **pass paths, not content**: messages carry instructions and file paths, while plans and reports live in the project's `.pipeline/` folder. A finished sub-agent returns only a four-line handoff (status, report path, key files, notes).
 
 ```
 .pipeline/
-├─ REQUIREMENTS.md       PRD / 需求原文（从你的文件原样复制，原文件不改）
-├─ PLAN_SOURCE.md        你提供的计划原文（有的话）
-├─ QUESTIONS.md          规划阶段的澄清问题和你的回答
-├─ PLAN.md               流水线实际使用的分阶段计划（阶段 ID、依赖、执行顺序）
-├─ DECISIONS.md          它替你做的决策和理由
-├─ PROGRESS.md           进度、计划调整记录、遗留问题、待你处理（中断后靠它恢复）
-├─ SUMMARY.md            最终交付总结（醒来先看这个）
-└─ reports/              每阶段的开发报告和每轮测试报告
+├─ REQUIREMENTS.md       PRD / requirements (copied verbatim; your original is untouched)
+├─ PLAN_SOURCE.md        your plan, if you provided one
+├─ QUESTIONS.md          clarifying questions and your answers
+├─ PLAN.md               the staged plan the pipeline runs (stage IDs, dependencies, order)
+├─ DECISIONS.md          decisions made on your behalf, with reasons
+├─ PROGRESS.md           progress, test batch table, plan changes, leftovers (used to resume)
+├─ SUMMARY.md            final delivery summary (read this first)
+└─ reports/              per-stage dev reports and per-round, per-scope test reports
 ```
 
-完整的架构图、通信协议、上下文管理策略和设计取舍见 **[设计文档](docs/设计说明.md)**。
+For the full architecture, communication protocol, context management, and design trade-offs, see the [design document](docs/设计说明.md) (Chinese).
 
-## 配置
+## Configuration
 
-| 参数 | 位置 | 默认值 | 说明 |
+| Parameter | Where | Default | Meaning |
 |---|---|---|---|
-| `MAX_FIX` | `SKILL.md` | 3 | 每阶段最多修复几轮，之后交给计划 agent 重新规划 |
-| `MAX_REPLAN` | `SKILL.md` | 2 | 每阶段最多重新规划几次，之后记为遗留问题 |
-| `ROTATE_EVERY` | `SKILL.md` | 3 | 子 agent 连续服务几个阶段后换新 |
-| `TEST_BATCH` | `SKILL.md` | 3 | 每几个阶段划为一个测试批次（遇「立即测试」阶段提前收批） |
-| `model` | 各 agent 文件头部 | `inherit` | 例如改成 `sonnet` 以节省成本 |
+| `MAX_FIX` | `SKILL.md` | 3 | Max fix rounds per test batch before the planner replans |
+| `MAX_REPLAN` | `SKILL.md` | 2 | Max replans per stage before it is recorded as a leftover |
+| `ROTATE_EVERY` | `SKILL.md` | 3 | Stages a developer serves before being replaced |
+| `TEST_BATCH` | `SKILL.md` | 3 | Stages per test batch (a "test immediately" stage closes a batch early) |
+| `model` | header of each agent file | `inherit` | For example set to `sonnet` to save cost |
 
-安装脚本还支持两个环境变量：`PIPELINE_REF`（指定下载的分支或标签，默认 `main`）和 `CLAUDE_CONFIG_DIR`（Claude Code 配置目录，默认 `~/.claude`）。
+The install scripts also honor two environment variables: `PIPELINE_REF` (branch or tag to download, default `main`) and `CLAUDE_CONFIG_DIR` (Claude Code config directory, default `~/.claude`).
 
-## 更新与卸载
+## Update and uninstall
 
-**更新**：重新运行安装命令即可，旧文件会自动备份。
+**Update**: rerun the install command; old files are backed up automatically.
 
-**卸载**：删除以下文件和文件夹。
+**Uninstall**: remove these files and folders.
 
 ```bash
 rm -rf ~/.claude/skills/pipeline ~/.claude/agents/pipeline-planner.md ~/.claude/agents/pipeline-developer.md ~/.claude/agents/pipeline-tester.md
 ```
 
 > [!NOTE]
-> 多阶段、多轮测试会消耗较多 token，项目越大越明显。规则写在提示词里，模型通常会遵守，但不是代码级强制。更多限制见[设计文档](docs/设计说明.md#10-已知限制)。
+> Multi-stage, multi-round runs consume a lot of tokens, more so for larger projects. The rules live in prompts: models usually follow them, but they are not enforced in code. See [known limitations](docs/设计说明.md#10-已知限制) (Chinese).
